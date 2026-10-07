@@ -48561,8 +48561,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 			"usage.config.pollIntervalSec": "轮询间隔（秒）",
 			"usage.config.saveFailed": "保存失败：设置未被接受。",
 			"usage.bank.title": "鲸元券",
-			"usage.bank.hint": "官方 API 每消耗 100 万 tokens 铸造 1 鲸元；保存或分享这张票券。",
-			"usage.bank.noUsage": "暂无 DeepSeek 官方用量数据（统计自插件启用起）",
+			"usage.bank.hint": "DeepSeek 官方 API 与 MiMo 每消耗 100 万 tokens 铸造 1 鲸元；保存或分享这张票券。",
+			"usage.bank.noUsage": "暂无 DeepSeek 官方 / MiMo 用量数据（统计自插件启用起）",
 			"usage.bank.minted": "累计铸造 {minted} 鲸元（{tokens} tokens）",
 			"usage.bank.spend.observed": "官方余额实测花费 ¥{cost}（自 {since} 起）",
 			"usage.bank.spend.estimated": "消费估算：约 ¥{cost}",
@@ -48627,8 +48627,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 			"usage.config.pollIntervalSec": "Poll interval (seconds)",
 			"usage.config.saveFailed": "Save failed: the deployment did not accept the setting.",
 			"usage.bank.title": "Whale-yuan voucher",
-			"usage.bank.hint": "Every 1,000,000 tokens spent on the official API mint one whale yuan; save or share the note.",
-			"usage.bank.noUsage": "No official DeepSeek usage yet (counting starts when the plugin is enabled)",
+			"usage.bank.hint": "Every 1,000,000 tokens spent on the DeepSeek official API or on MiMo mint one whale yuan; save or share the note.",
+			"usage.bank.noUsage": "No DeepSeek official or MiMo usage yet (counting starts when the plugin is enabled)",
 			"usage.bank.minted": "Minted {minted} whale yuan ({tokens} tokens)",
 			"usage.bank.spend.observed": "Spent ¥{cost} observed on the official balance (watching since {since})",
 			"usage.bank.spend.estimated": "Estimated spend: about ¥{cost}",
@@ -49521,8 +49521,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 		//#endregion
 		//#region ../dsh-usage/src/client/voucher.ts
 		/**
-		* The Whale-yuan voucher (鲸元券): the DeepSeek official family's retained
-		* ledger totals stamped onto the banknote artwork as a denomination, ready
+		* The Whale-yuan voucher (鲸元券): the mint family's retained ledger totals
+		* stamped onto the banknote artwork as a denomination, ready
 		* to save or share. The canvas copy is deliberately locale-neutral (digits,
 		* latin captions, ISO dates) so the exported image needs no dictionary;
 		* everything user-facing around it lives in the section's locales. The pure
@@ -49544,18 +49544,35 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 			return `${date.getFullYear()}-${month}-${day}`;
 		}
 		/**
-		* Sum the DeepSeek official family rows out of a usage window (both the
-		* `deepseek` catalog alias and the live `deepseek-official` route fold into
-		* one voucher). Undefined when the window is absent (older host) or the
-		* family has no usage — a zero-token note mints nothing.
+		* Provider route ids minted beside the DeepSeek official family: the MiMo
+		* gateway, which the ledger records under its own route id. The bank counts
+		* the tokens a profile spends, not only the ones DeepSeek bills — MiMo is the
+		* other pay-as-you-go route such a profile runs on, and its rows carry no
+		* price book, so it mints tokens without adding to the spend line. Route ids
+		* rather than adapter families because minting is an accounting decision that
+		* must never widen the credential or probing paths, the same split
+		* `isDeepSeekProviderRoute` keeps (issue #1772).
 		*/
-		function deepseekVoucherData(window) {
+		const EXTRA_MINT_ROUTE_IDS = ["mimo"];
+		/** Whether one provider route's ledger rows mint whale yuan. */
+		function mintsWhaleYuan(provider) {
+			return isDeepSeekProviderRoute(provider) || EXTRA_MINT_ROUTE_IDS.includes(provider);
+		}
+		/**
+		* Sum the mint family's rows out of a usage window: the whole DeepSeek
+		* official family (the `deepseek` catalog alias, the live `deepseek-official`
+		* route and the signed-in `deepseek-account` route all fold into one
+		* voucher) plus {@link EXTRA_MINT_ROUTE_IDS}. Undefined when the window is
+		* absent (older host) or the family has no usage — a zero-token note mints
+		* nothing.
+		*/
+		function voucherData(window) {
 			if (window === void 0) return void 0;
 			let tokens = 0;
 			let calls = 0;
 			let cost = 0;
 			for (const row of window.providers) {
-				if (!isDeepSeekProviderRoute(row.provider)) continue;
+				if (!mintsWhaleYuan(row.provider)) continue;
 				tokens += totalTokens(row.totals);
 				calls += row.totals.calls;
 				cost += row.totals.cost;
@@ -50245,8 +50262,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 			return totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens + totals.outputTokens;
 		}
 		/**
-		* The Token 银行 card: the DeepSeek official family's retained-ledger usage
-		* minted onto the whale-yuan note at 1,000,000 tokens per whale yuan. The
+		* The Token 银行 card: the mint family's (DeepSeek official + MiMo)
+		* retained-ledger usage minted onto the whale-yuan note at 1,000,000 tokens
+		* per whale yuan. The
 		* window is the whole retained ledger by default (the host's aggregate,
 		* falling back to the 30-day trend when an older host serves no `all`) or the
 		* single day the user picked; the spend line prefers the official balance
@@ -50256,7 +50274,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
 		*/
 		function VoucherCard(props) {
 			const { window: ledger, observedSpend, loading, error } = props;
-			const data = deepseekVoucherData(ledger);
+			const data = voucherData(ledger);
 			const canvasRef = (0, react.useRef)(null);
 			const [drawError, setDrawError] = (0, react.useState)(void 0);
 			(0, react.useEffect)(() => {

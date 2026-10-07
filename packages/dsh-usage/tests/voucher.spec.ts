@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { faceValue, formatDay, formatDenomination, deepseekVoucherData, voucherSerial, TOKENS_PER_WHALE_YUAN } from '../src/client/voucher.ts'
+import { faceValue, formatDay, formatDenomination, voucherData, voucherSerial, TOKENS_PER_WHALE_YUAN } from '../src/client/voucher.ts'
 import { emptyTotals, type UsageProviderSummary, type UsageWindowSummary } from '../src/core/types.ts'
 
 /**
- * The voucher's pure face: DeepSeek official family summation over a usage
- * window, the 1,000,000:1 whale-yuan exchange, the banknote denomination
- * formatting, the deterministic serial, and the observed-since day. The
+ * The voucher's pure face: mint family (DeepSeek official + MiMo) summation
+ * over a usage window, the 1,000,000:1 whale-yuan exchange, the banknote
+ * denomination formatting, the deterministic serial, and the observed-since day. The
  * canvas draw itself is composition, verified visually.
  */
 
@@ -17,15 +17,15 @@ function windowOf(providers: UsageProviderSummary[]): UsageWindowSummary {
   return { from: '2025-12-01', to: '2026-01-01', totals: emptyTotals(), providers }
 }
 
-describe('deepseekVoucherData', () => {
+describe('voucherData', () => {
   it('returns undefined without a window (older host) or without family usage', () => {
-    expect(deepseekVoucherData(undefined)).toBeUndefined()
-    expect(deepseekVoucherData(windowOf([row('kimi-coding', 100)]))).toBeUndefined()
-    expect(deepseekVoucherData(windowOf([]))).toBeUndefined()
+    expect(voucherData(undefined)).toBeUndefined()
+    expect(voucherData(windowOf([row('kimi-coding', 100)]))).toBeUndefined()
+    expect(voucherData(windowOf([]))).toBeUndefined()
   })
 
   it('sums the whole official family across route aliases and ignores other providers', () => {
-    const data = deepseekVoucherData(windowOf([
+    const data = voucherData(windowOf([
       row('deepseek', 100_000, 3, 1.25),
       row('deepseek-official', 50_000, 2, 0.75),
       row('kimi-coding', 999_999, 40, 0),
@@ -33,12 +33,29 @@ describe('deepseekVoucherData', () => {
     expect(data).toMatchObject({ tokens: 150_000, calls: 5, cost: 2, from: '2025-12-01', to: '2026-01-01' })
   })
 
+  // The bank counts what the profile spends, not only what DeepSeek bills:
+  // the MiMo gateway route mints beside the official family, and it carries
+  // no price book, so it never adds to the spend line.
+  it('user sees the MiMo gateway route mint beside the official family', () => {
+    // Given a usage window holding the MiMo route, one official route and an unrelated provider
+    const window = windowOf([
+      row('mimo', 8_000_000, 24, 0),
+      row('deepseek-official', 50_000, 2, 0.75),
+      row('kimi-coding', 999_999, 40, 0),
+    ])
+    // When the window is summed into voucher data
+    const data = voucherData(window)
+    // Then MiMo tokens and calls mint, the spend line stays the official family's,
+    // and the unrelated provider still never mints
+    expect(data).toMatchObject({ tokens: 8_050_000, calls: 26, cost: 0.75 })
+  })
+
   // #1772: the account route minted nowhere, so a user signed in to a DeepSeek
   // account saw a permanently empty bank while spending against it.
   it('user on the signed-in account route sees their tokens mint alongside the key routes', () => {
     // Given a usage window holding the account route, an official key route,
     // and an unrelated provider
-    const data = deepseekVoucherData(windowOf([
+    const data = voucherData(windowOf([
       row('deepseek-account', 12_000_000, 40, 3.5),
       row('deepseek-official', 50_000, 2, 0.75),
       row('kimi-coding', 999_999, 40, 0),
@@ -50,7 +67,7 @@ describe('deepseekVoucherData', () => {
   })
 
   it('counts cache tokens as minted whale yuan', () => {
-    const data = deepseekVoucherData(windowOf([{
+    const data = voucherData(windowOf([{
       provider: 'deepseek',
       totals: { ...emptyTotals(), inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 40, calls: 1 },
       models: [],

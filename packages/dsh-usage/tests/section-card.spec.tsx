@@ -158,13 +158,13 @@ describe('UsageSectionCard configured-provider filter', () => {
 })
 
 describe('Token 银行 tab', () => {
-  it('user sees the empty state when the DeepSeek official family has no usage', () => {
-    // Given an overview whose DeepSeek official family has no usage
+  it('user sees the empty state when the mint family has no usage', () => {
+    // Given an overview whose mint family (DeepSeek official + MiMo) has no usage
     render(<UsageSectionCard {...cardProps(overview([]))} />)
     // When the user opens the Token 银行 tab
     fireEvent.click(screen.getByRole('tab', { name: 'Token 银行' }))
-    // Then the bank reports the missing official usage and offers no save button
-    expect(screen.getByText('暂无 DeepSeek 官方用量数据（统计自插件启用起）').textContent).toBe('暂无 DeepSeek 官方用量数据（统计自插件启用起）')
+    // Then the bank reports the missing mint-family usage and offers no save button
+    expect(screen.getByText('暂无 DeepSeek 官方 / MiMo 用量数据（统计自插件启用起）').textContent).toBe('暂无 DeepSeek 官方 / MiMo 用量数据（统计自插件启用起）')
     expect(screen.queryByRole('button', { name: '保存图片' })).toBeNull()
   })
 
@@ -191,6 +191,28 @@ describe('Token 银行 tab', () => {
     // And save is offered while share stays hidden without navigator.canShare
     expect(screen.getByRole('button', { name: '保存图片' }).textContent).toBe('保存图片')
     expect(screen.queryByRole('button', { name: '分享' })).toBeNull()
+  })
+
+  it('user gets the MiMo route minted beside the official family while the spend line stays official', () => {
+    // Given a whole-ledger aggregate holding the MiMo route and one official route
+    const snapshot = overview([])
+    snapshot.usage.all = {
+      from: '2026-01-01',
+      to: '2026-01-01',
+      totals: emptyTotals(),
+      providers: [
+        { provider: 'mimo', totals: { ...emptyTotals(), inputTokens: 3_000_000, calls: 9 }, models: [] },
+        { provider: 'deepseek-official', totals: { ...emptyTotals(), inputTokens: 500_000, calls: 1, cost: 0.1 }, models: [] },
+      ],
+    }
+    render(<UsageSectionCard {...cardProps(snapshot)} />)
+    // When the user opens the Token 银行 tab
+    fireEvent.click(screen.getByRole('tab', { name: 'Token 银行' }))
+    // Then the MiMo tokens mint with the official ones
+    expect(screen.getByText('累计铸造 4 鲸元（3.5M tokens）').textContent).toBe('累计铸造 4 鲸元（3.5M tokens）')
+    expect(screen.getByText('10 次调用').textContent).toBe('10 次调用')
+    // And the spend line keeps the official family's estimate, since MiMo carries no price book
+    expect(screen.getByText('消费估算：约 ¥0.10').textContent).toBe('消费估算：约 ¥0.10')
   })
 
   it('user sees the official balance watch preferred over the fold-time estimate for the spend line', () => {
